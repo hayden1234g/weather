@@ -62,7 +62,8 @@
     border: 0; border-bottom: 1px solid var(--line); background: none;
   }
   .results button:last-child { border-bottom: 0; }
-  .results button:hover, .results button:focus { background: var(--card); outline: none; }
+  .results button:hover, .results button.active { background: var(--card); outline: none; }
+  .results .none { padding: 10px 12px; color: var(--muted); font-style: italic; }
   .results .sub { color: var(--muted); font-size: 14px; }
   .chips { display: flex; gap: 6px; overflow-x: auto; padding-top: 8px; scrollbar-width: none; }
   .chips::-webkit-scrollbar { display: none; }
@@ -151,7 +152,7 @@
 <div class="wrap">
   <header>
     <form class="search" id="searchForm" autocomplete="off">
-      <input id="q" type="search" placeholder="ZIP code or City, ST" enterkeyhint="search" aria-label="Search location">
+      <input id="q" type="search" placeholder="ZIP code or City, ST" autocapitalize="words" autocorrect="off" spellcheck="false" enterkeyhint="search" aria-label="Search location">
       <button type="button" class="iconbtn" id="locate" title="Use my location" aria-label="Use my location">📍</button>
       <div class="results" id="results" hidden></div>
     </form>
@@ -209,13 +210,73 @@ async function geocode(q) {
   const ll = q.match(/^(-?\d+(?:\.\d+)?)\s*,\s*(-?\d+(?:\.\d+)?)$/);
   if (ll) return [{ name: "", state: "", lat: +ll[1], lon: +ll[2] }];
 
-  const [city, st] = q.split(",").map(s => s.trim());
-  const want = st ? toAbbr(st) : null;
-  const d = await getJSON(`https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(city)}&count=25&language=en&countryCode=US&format=json`, 2);
-  let res = (d.results || []).map(r => ({ name: r.name, state: toAbbr(r.admin1), county: r.admin2 || "", lat: r.latitude, lon: r.longitude }));
-  if (want) res = res.filter(r => r.state === want);
+  const res = await placeSearch(q);
   if (!res.length) throw new Error(`No US place matches “${q}”. Try a ZIP code.`);
-  return res.slice(0, 8);
+  return res;
+}
+
+// "Austin", "Austin, TX", "Austin TX", "Austin Texas", "New York ny" → {city, state}
+function splitCityState(q) {
+  let [city, st] = q.split(",").map(s => s.trim());
+  if (st == null) {
+    const words = city.split(/\s+/);
+    for (const n of [2, 1]) { // try two-word state names first ("New Mexico")
+      if (words.length > n) {
+        const tail = words.slice(-n).join(" ");
+        const isState = (n === 1 && tail.length === 2 && STATES[tail.toUpperCase()]) || ABBR[tail.toLowerCase()];
+        if (isState) {
+          return { city: words.slice(0, -n).join(" "), state: toAbbr(tail) };
+        }
+      }
+    }
+  }
+  return { city, state: st ? toAbbr(st) : null };
+}
+
+const geoCache = new Map();
+async function openMeteo(name) {
+  if (!geoCache.has(name)) {
+    geoCache.set(name, getJSON(`https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(name)}&count=30&language=en&countryCode=US&format=json`, 2)
+      .then(d => d.results || []).catch(e => { geoCache.delete(name); throw e; }));
+  }
+  return geoCache.get(name);
+}
+
+// places only (no airports, parks, peaks), optionally filtered by a state prefix
+async function placeSearch(q, limit = 8) {
+  const { city, state } = splitCityState(q);
+  if (city.length < 2) return [];
+  const rows = await openMeteo(city);
+  const seen = new Set();
+  const out = rows
+    .filter(r => /^PPL/.test(r.feature_code || ""))
+    .map(r => ({ name: r.name, state: toAbbr(r.admin1), county: r.admin2 || "", lat: r.latitude, lon: r.longitude, pop: r.population || 0 }))
+    .sort((x, y) => y.pop - x.pop) // biggest towns first: "Port" → Portland before Port, OK
+    .filter(r => !state || r.state.startsWith(state.toUpperCase()) || (STATES[r.state] || "").toLowerCase().startsWith(state.toLowerCase()))
+    .filter(r => { const k = `${r.name}|${r.state}`; if (seen.has(k)) return false; seen.add(k); return true; })
+    .slice(0, limit);
+  // "Fort Washington" isn't Fort, WA: if the state split found nothing, search the whole phrase
+  if (!out.length && state && !q.includes(",")) return placeSearch(q + ",", limit);
+  return out;
+}
+
+// autocomplete suggestions as the user types
+async function suggest(q) {
+  q = q.trim();
+  if (/^\d+$/.test(q)) {
+    if (q.length === 5) {
+      const d = await getJSON(`https://api.zippopotam.us/us/${q}`, 1).catch(() => null);
+      return (d?.places || []).map(p => ({ name: p["place name"], state: p["state abbreviation"], lat: +p.latitude, lon: +p.longitude, zip: q }));
+    }
+    if (q.length < 3) return [];
+    // partial ZIP: places whose postcode list has a match
+    const rows = await openMeteo(q);
+    return rows.filter(r => /^PPL/.test(r.feature_code || "")).flatMap(r => {
+      const zips = (r.postcodes || []).filter(z => z.startsWith(q));
+      return zips.length ? [{ name: r.name, state: toAbbr(r.admin1), lat: r.latitude, lon: r.longitude, zip: zips.slice(0, 3).join(", ") + (zips.length > 3 ? "…" : "") }] : [];
+    }).slice(0, 8);
+  }
+  return placeSearch(q);
 }
 
 /* ---------- icons ---------- */
@@ -307,26 +368,58 @@ $("#chips").addEventListener("click", e => {
 
 /* ---------- search ---------- */
 const resultsEl = $("#results");
-let lastResults = [];
-function showResults(list) {
-  lastResults = list;
-  resultsEl.innerHTML = list.map((r, i) => `<button type="button" data-i="${i}">${esc(r.name)}, ${esc(r.state)}${r.county ? ` <span class="sub">· ${esc(r.county)}</span>` : ""}</button>`).join("");
+const qEl = $("#q");
+let lastResults = [], resultsFor = "", active = -1, suggestSeq = 0, suggestTimer = 0;
+function showResults(list, emptyText) {
+  lastResults = list; active = -1;
+  if (!list.length && !emptyText) return hideResults();
+  resultsEl.innerHTML = list.length
+    ? list.map((r, i) => `<button type="button" data-i="${i}" tabindex="-1">${esc(r.name)}, ${esc(r.state)}${r.zip ? ` <span class="sub">· ${esc(r.zip)}</span>` : r.county ? ` <span class="sub">· ${esc(r.county)}</span>` : ""}</button>`).join("")
+    : `<div class="none">${esc(emptyText)}</div>`;
   resultsEl.hidden = false;
 }
-function hideResults() { resultsEl.hidden = true; }
+function hideResults() { resultsEl.hidden = true; lastResults = []; active = -1; }
+function setActive(i) {
+  const btns = resultsEl.querySelectorAll("button");
+  if (!btns.length) return;
+  active = (i + btns.length) % btns.length;
+  btns.forEach((b, j) => b.classList.toggle("active", j === active));
+}
+function pick(r) {
+  clearTimeout(suggestTimer); suggestSeq++;
+  hideResults(); qEl.value = ""; qEl.blur(); load(r);
+}
+qEl.addEventListener("input", () => {
+  clearTimeout(suggestTimer);
+  const q = qEl.value.trim();
+  const seq = ++suggestSeq;
+  if (q.length < 2) return hideResults();
+  suggestTimer = setTimeout(async () => {
+    try {
+      const list = await suggest(q);
+      if (seq === suggestSeq) { showResults(list, /^\d{1,4}$/.test(q) ? "" : "No matches yet"); resultsFor = q; }
+    } catch { if (seq === suggestSeq) hideResults(); }
+  }, 200);
+});
+qEl.addEventListener("keydown", e => {
+  if (resultsEl.hidden) return;
+  if (e.key === "ArrowDown") { e.preventDefault(); setActive(active + 1); }
+  else if (e.key === "ArrowUp") { e.preventDefault(); setActive(active - 1); }
+  else if (e.key === "Escape") hideResults();
+});
 $("#searchForm").addEventListener("submit", async e => {
   e.preventDefault();
-  const q = $("#q").value.trim(); if (!q) return;
-  hideResults();
+  const q = qEl.value.trim(); if (!q) return;
+  // Enter takes the highlighted suggestion, or the top one
+  if (lastResults.length && resultsFor === q) return pick(lastResults[Math.max(active, 0)]);
   try {
     const list = await geocode(q);
-    if (list.length === 1) { $("#q").value = ""; $("#q").blur(); load(list[0]); }
-    else showResults(list);
-  } catch (err) { showMessage("🔎", err.message); }
+    if (list.length === 1) pick(list[0]); else showResults(list);
+  } catch (err) { showResults([], err.message); }
 });
+resultsEl.addEventListener("mousedown", e => e.preventDefault()); // keep focus in the box
 resultsEl.addEventListener("click", e => {
-  const b = e.target.closest("button[data-i]"); if (!b) return;
-  hideResults(); $("#q").value = ""; $("#q").blur(); load(lastResults[+b.dataset.i]);
+  const b = e.target.closest("button[data-i]"); if (b) pick(lastResults[+b.dataset.i]);
 });
 document.addEventListener("click", e => { if (!e.target.closest(".search")) hideResults(); });
 $("#locate").addEventListener("click", () => {
