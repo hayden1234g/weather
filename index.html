@@ -133,6 +133,24 @@
   .words b { font-weight: 600; }
   .totals { padding: 10px 14px 0; color: var(--muted); font-size: 14px; }
 
+  /* outlooks */
+  .outlooks { margin-bottom: 12px; }
+  .orow { padding: 10px 14px; border-bottom: 1px solid var(--line); }
+  .orow:last-of-type { border-bottom: 0; }
+  .orow .lbl { font-size: 14px; display: flex; justify-content: space-between; gap: 8px; }
+  .orow .lbl a { color: var(--muted); font-size: 12px; }
+  .cells { display: grid; grid-template-columns: repeat(8, 1fr); gap: 4px; margin-top: 6px; }
+  .cell { text-align: center; border-radius: 6px; padding: 3px 0 4px; font-size: 12px; line-height: 1.15; background: var(--bg); color: var(--muted); }
+  .cell b { display: block; font-size: 14px; }
+  .cell.na { opacity: .35; }
+  .onote { padding: 8px 14px 10px; font-size: 13px; color: var(--muted); }
+  .badges { grid-column: 1 / -1; display: flex; flex-wrap: wrap; gap: 4px; margin-top: -2px; }
+  .badge { font-size: 12px; border-radius: 999px; padding: 1px 8px; color: #16181c; font-weight: 600; }
+  .badge.dim { background: var(--line); color: var(--muted); font-weight: 400; }
+  .olist { padding: 10px 14px 0; font-size: 14px; }
+  .olist div { margin-top: 4px; }
+  .olist .k { color: var(--muted); }
+
   .msg { text-align: center; color: var(--muted); padding: 60px 16px; }
   .msg .big { font-size: 48px; }
   .msg button { margin-top: 12px; padding: 8px 16px; border-radius: 10px; border: 1px solid var(--line); background: var(--card); }
@@ -334,6 +352,161 @@ function sumBetween(ser, a, b) { // prorate interval amounts into [a,b)
   return tot;
 }
 
+/* ---------- SPC + WPC outlooks (NOAA map services, point lookups) ---------- */
+const MS = "https://mapservices.weather.noaa.gov/vector/rest/services";
+// SPC categorical levels and the colors SPC uses on its maps
+const SPC = {
+  TSTM: { n: "T", name: "Thunderstorms", c: "#c1e9c1" },
+  MRGL: { n: 1, name: "Marginal", c: "#7fc57f" },
+  SLGT: { n: 2, name: "Slight", c: "#f6f67f" },
+  ENH:  { n: 3, name: "Enhanced", c: "#e6c27f" },
+  MDT:  { n: 4, name: "Moderate", c: "#e67f7f" },
+  HIGH: { n: 5, name: "High", c: "#ff7fff" },
+};
+const SPC_RANK = ["TSTM", "MRGL", "SLGT", "ENH", "MDT", "HIGH"];
+const ERO = {
+  Marginal: { n: 1, c: "#7fc57f" }, Slight: { n: 2, c: "#f6f67f" },
+  Moderate: { n: 3, c: "#e67f7f" }, High: { n: 4, c: "#ff7fff" },
+};
+const WSSI = {
+  "WINTER WEATHER AREA": { s: "Wx", name: "Winter weather", c: "#c9d6e3", r: 0 },
+  MINOR: { s: "Min", name: "Minor", c: "#f6f67f", r: 1 },
+  MODERATE: { s: "Mod", name: "Moderate", c: "#e6c27f", r: 2 },
+  MAJOR: { s: "Maj", name: "Major", c: "#e67f7f", r: 3 },
+  EXTREME: { s: "Ext", name: "Extreme", c: "#d08fff", r: 4 },
+};
+const PROB_RANK = { Slight: 1, Moderate: 2, High: 3 };
+
+// ArcGIS identify returns field aliases that differ by service ("dn" vs "dn value"); match loosely
+function attr(a, ...names) {
+  const norm = s => s.toLowerCase().replace(/[^a-z0-9]/g, "");
+  const want = names.map(norm);
+  for (const k in a) if (want.includes(norm(k))) { const v = a[k]; return v === "Null" ? null : v; }
+  return null;
+}
+async function identify(service, layers, lat, lon) {
+  const u = `${MS}/${service}/MapServer/identify?geometry=${lon},${lat}&geometryType=esriGeometryPoint&sr=4326` +
+    `&tolerance=0&mapExtent=${lon - 1},${lat - 1},${lon + 1},${lat + 1}&imageDisplay=400,400,96` +
+    `&returnGeometry=false&layers=all:${layers.join(",")}&f=json`;
+  const d = await getJSON(u, 2);
+  if (d.error) throw new Error(d.error.message);
+  const by = {};
+  for (const r of d.results || []) (by[r.layerId] ||= []).push(r.attributes);
+  return by;
+}
+// Outlook "day 1" runs 12Z→12Z and rolls over with the ~06Z issuance
+function outlookDay1() { const t = new Date(Date.now() - 6 * 3600e3); return Date.UTC(t.getUTCFullYear(), t.getUTCMonth(), t.getUTCDate(), 12); }
+const outlookKey = n => dayKey(outlookDay1() + (n - 1) * 86400e3);
+
+async function fetchOutlooks(lat, lon) {
+  const days = {};
+  const day = n => (days[outlookKey(n)] ||= {});
+  const tasks = [
+    // SPC: categorical days 1-3, tornado/hail/wind days 1-2, any-severe prob day 3, days 4-8
+    identify("outlooks/SPC_wx_outlks", [1, 3, 5, 7, 9, 11, 13, 15, 17, 19, 21, 22, 23, 24, 25], lat, lon).then(by => {
+      const cat = { 1: 1, 2: 9, 3: 17 }, probs = { 1: { torn: 3, hail: 5, wind: 7 }, 2: { torn: 11, hail: 13, wind: 15 }, 3: { any: 19 } };
+      for (const n of [1, 2, 3]) {
+        const labels = (by[cat[n]] || []).map(a => attr(a, "label")).filter(l => SPC[l]);
+        if (labels.length) day(n).spc = labels.sort((a, b) => SPC_RANK.indexOf(b) - SPC_RANK.indexOf(a))[0];
+        for (const [k, id] of Object.entries(probs[n])) {
+          const rows = by[id] || [];
+          const pct = Math.max(0, ...rows.map(a => parseFloat(attr(a, "label"))).filter(v => v > 0 && v < 1).map(v => Math.round(v * 100)));
+          const sig = rows.some(a => /SIGN/i.test(attr(a, "label") || ""));
+          if (pct) (day(n).spcProb ||= {})[k] = `${pct}%${sig ? " (significant)" : ""}`;
+        }
+      }
+      [21, 22, 23, 24, 25].forEach((id, i) => {
+        const pct = Math.max(0, ...(by[id] || []).map(a => +attr(a, "dn", "dn value") || 0));
+        if (pct) day(4 + i).spc48 = pct;
+      });
+    }),
+    // WPC excessive rainfall, days 1-5
+    identify("hazards/wpc_precip_hazards", [0, 1, 2, 3, 4], lat, lon).then(by => {
+      for (let n = 1; n <= 5; n++) {
+        const lv = (by[n - 1] || []).map(a => (attr(a, "outlook", "Excessive Rain Outlook") || "").split(" ")[0]).filter(l => ERO[l]);
+        if (lv.length) day(n).ero = lv.sort((a, b) => ERO[b].n - ERO[a].n)[0];
+      }
+    }),
+    // WPC winter storm severity index, days 1-3
+    identify("outlooks/wpc_wssi", [1, 2, 3], lat, lon).then(by => {
+      for (let n = 1; n <= 3; n++) {
+        const lv = (by[n] || []).map(a => (attr(a, "impact") || "").toUpperCase()).filter(l => WSSI[l]);
+        if (lv.length) day(n).wssi = lv.sort((a, b) => WSSI[b].r - WSSI[a].r)[0];
+      }
+    }),
+    // WPC probability of ≥4/8/12" snow and ≥0.25" ice, days 1-3
+    identify("precip/wpc_prob_winter_precip", [1, 2, 3, 4, 6, 7, 8, 9, 11, 12, 13, 14], lat, lon).then(by => {
+      const kinds = ['4"+ snow', '8"+ snow', '12"+ snow', '¼"+ ice'];
+      for (let n = 1; n <= 3; n++) kinds.forEach((k, i) => {
+        const lv = (by[(n - 1) * 5 + 1 + i] || []).map(a => attr(a, "outlook") || "").filter(Boolean)
+          .sort((a, b) => (PROB_RANK[b.split(" ")[0]] || 0) - (PROB_RANK[a.split(" ")[0]] || 0))[0];
+        if (lv) (day(n).winter ||= []).push(`${k}: ${lv.replace(/^(\w+) \((.*)\)$/, "$2 ($1)")}`);
+      });
+    }),
+  ];
+  // WPC rain totals: 24h days 1-3, 48h days 4-5 and 6-7, 7-day total
+  let qpf7 = null;
+  tasks.push(identify("precip/wpc_qpf", [1, 2, 3, 4, 5, 11], lat, lon).then(by => {
+    const amt = id => { const v = (by[id] || []).map(a => parseFloat(attr(a, "qpf"))).filter(v => !isNaN(v)); return v.length ? Math.max(...v) : 0; };
+    [[1, 1, 1], [2, 2, 1], [3, 3, 1], [4, 4, 2], [5, 6, 2]].forEach(([id, n, span]) => { day(n).qpf = { in: amt(id), span }; });
+    qpf7 = amt(11);
+  }));
+  const res = await Promise.allSettled(tasks);
+  const failed = res.filter(r => r.status === "rejected").length;
+  if (failed === res.length) throw res[0].reason;
+  return { days, qpf7, failed, fetched: Date.now() };
+}
+
+function dayBadges(o) {
+  if (!o) return "";
+  const b = [];
+  if (o.spc) b.push(o.spc === "TSTM" ? `<span class="badge dim">⚡ T-storms</span>` : `<span class="badge" style="background:${SPC[o.spc].c}">⚡ ${SPC[o.spc].name} severe risk</span>`);
+  else if (o.spc48) b.push(`<span class="badge" style="background:${o.spc48 >= 30 ? SPC.ENH.c : SPC.SLGT.c}">⚡ ${o.spc48}% severe</span>`);
+  if (o.ero) b.push(`<span class="badge" style="background:${ERO[o.ero].c}">🌊 ${o.ero} flood risk</span>`);
+  if (o.wssi) b.push(o.wssi === "WINTER WEATHER AREA" ? `<span class="badge dim">❄ Winter weather</span>` : `<span class="badge" style="background:${WSSI[o.wssi].c}">❄ ${WSSI[o.wssi].name} winter impact</span>`);
+  return b.length ? `<span class="badges">${b.join("")}</span>` : "";
+}
+
+function outlookDetail(o) {
+  if (!o) return "";
+  const L = [];
+  if (o.spc) L.push(`<div><span class="k">SPC severe:</span> ${o.spc === "TSTM" ? "General thunderstorms (no severe risk)" : `${SPC[o.spc].name} (${SPC[o.spc].n} of 5)`}</div>`);
+  if (o.spcProb) {
+    const p = o.spcProb, parts = [p.torn && `tornado ${p.torn}`, p.hail && `hail ${p.hail}`, p.wind && `wind ${p.wind}`, p.any && `any severe ${p.any}`].filter(Boolean);
+    L.push(`<div><span class="k">SPC odds within 25 mi:</span> ${parts.join(" · ")}</div>`);
+  }
+  if (o.spc48) L.push(`<div><span class="k">SPC days 4–8:</span> ${o.spc48}% chance of severe storms within 25 mi</div>`);
+  if (o.ero) L.push(`<div><span class="k">WPC excessive rain:</span> ${o.ero} (${ERO[o.ero].n} of 4)</div>`);
+  if (o.qpf && o.qpf.in > 0) L.push(`<div><span class="k">WPC precip forecast:</span> ${o.qpf.in < 0.1 ? "a trace–0.1" : "≈ " + o.qpf.in.toFixed(2)} in${o.qpf.span > 1 ? ` over ${o.qpf.span} days` : ""}</div>`);
+  if (o.wssi) L.push(`<div><span class="k">WPC winter impact:</span> ${WSSI[o.wssi].name}</div>`);
+  if (o.winter) L.push(`<div><span class="k">WPC odds:</span> ${o.winter.join(" · ")}</div>`);
+  return L.length ? `<div class="olist">${L.join("")}</div>` : "";
+}
+
+function outlookCard(days) {
+  const O = data.outlooks;
+  if (!O) return data.outlooksErr ? `<section class="card outlooks"><h2>SPC &amp; WPC outlooks</h2><div class="onote">Couldn't reach the outlook service (${esc(data.outlooksErr)}).</div></section>` : "";
+  const keys = days.slice(0, 8).map(d => d.key);
+  const names = days.slice(0, 8).map((d, i) => i === 0 ? "Tod" : fmt(d.t, { weekday: "short" }));
+  const row = cell => `<div class="cells" style="grid-template-columns:repeat(${keys.length},1fr)">${keys.map((k, i) => cell(O.days[k] || {}, i, names[i])).join("")}</div>`;
+  const emptyCell = (nm, na) => `<div class="cell ${na ? "na" : ""}"><b>${na ? "" : "–"}</b>${nm}</div>`;
+  const spcRow = row((o, i, nm) => {
+    if (o.spc) { const s = SPC[o.spc]; return `<div class="cell" style="background:${s.c};color:#16181c" title="${s.name}"><b>${s.n}</b>${nm}</div>`; }
+    if (o.spc48) return `<div class="cell" style="background:${o.spc48 >= 30 ? SPC.ENH.c : SPC.SLGT.c};color:#16181c"><b>${o.spc48}%</b>${nm}</div>`;
+    return emptyCell(nm, i >= 8);
+  });
+  const eroRow = row((o, i, nm) => o.ero ? `<div class="cell" style="background:${ERO[o.ero].c};color:#16181c" title="${o.ero}"><b>${ERO[o.ero].n}</b>${nm}</div>` : emptyCell(nm, i >= 5));
+  const anyWinter = keys.some(k => O.days[k]?.wssi);
+  const wssiRow = anyWinter ? row((o, i, nm) => o.wssi ? `<div class="cell" style="background:${WSSI[o.wssi].c};color:#16181c" title="${WSSI[o.wssi].name}"><b>${WSSI[o.wssi].s}</b>${nm}</div>` : emptyCell(nm, i >= 3)) : "";
+  return `<section class="card outlooks">
+    <h2>SPC &amp; WPC outlooks</h2>
+    <div class="orow"><div class="lbl"><span>⚡ Severe storms <span class="k" style="color:var(--muted)">(SPC, risk 1–5)</span></span><a href="https://www.spc.noaa.gov/products/outlook/" target="_blank" rel="noopener">maps ↗</a></div>${spcRow}</div>
+    <div class="orow"><div class="lbl"><span>🌊 Flash flooding <span style="color:var(--muted)">(WPC, risk 1–4)</span></span><a href="https://www.wpc.ncep.noaa.gov/qpf/excessive_rainfall_outlook_ero.php" target="_blank" rel="noopener">maps ↗</a></div>${eroRow}</div>
+    ${anyWinter ? `<div class="orow"><div class="lbl"><span>❄ Winter impact <span style="color:var(--muted)">(WPC WSSI)</span></span><a href="https://www.wpc.ncep.noaa.gov/wwd/wssi/wssi.php" target="_blank" rel="noopener">maps ↗</a></div>${wssiRow}</div>` : ""}
+    <div class="onote">WPC 7-day precip (melted):<b style="color:var(--text)">${O.qpf7 ? `≈ ${O.qpf7.toFixed(2)} in` : "none expected"}</b> · <a href="https://www.wpc.ncep.noaa.gov/qpf/qpf2.shtml" target="_blank" rel="noopener" style="color:var(--muted)">QPF maps ↗</a>${O.failed ? ` · some outlooks didn't load` : ""}</div>
+  </section>`;
+}
+
 /* ---------- state ---------- */
 let loc = null;          // {name, state, lat, lon}
 let data = null;         // last loaded bundle
@@ -469,6 +642,7 @@ async function load(l, { quiet = false } = {}) {
       if (obs) obs.stationName = station.properties.name;
     }
     if (seq !== loadSeq) return;
+    const prevOutlooks = data && sameLoc(data.loc, loc) ? data.outlooks : null;
     data = {
       loc, tz, fetched: Date.now(),
       periods: fc.value.properties.periods,
@@ -476,6 +650,7 @@ async function load(l, { quiet = false } = {}) {
       grid: grid.value?.properties || null,
       alerts: al.value?.features || [],
       obs: obs?.properties || null, obsStation: obs?.stationName || "",
+      outlooks: prevOutlooks,
     };
     store.set("wx.last", loc);
     store.set("wx.cache", data);
@@ -484,6 +659,12 @@ async function load(l, { quiet = false } = {}) {
     u.search = `?at=${lat},${lon}&n=${encodeURIComponent(locLabel(loc))}`;
     history.replaceState(null, "", u);
     render();
+    // SPC/WPC outlooks come from a separate (slower) service; fill them in when they land
+    fetchOutlooks(lat, lon).then(o => {
+      if (seq !== loadSeq) return;
+      data.outlooks = o; data.outlooksErr = null;
+      store.set("wx.cache", data); render();
+    }).catch(e => { if (seq === loadSeq) { data.outlooksErr = e.message; render(); } });
   } catch (err) {
     if (seq !== loadSeq) return;
     console.error(err);
@@ -564,6 +745,7 @@ function render(staleNote) {
           <span class="hi">${hi != null ? hi + "°" : ""}</span>
         </span>
         <span class="dshort">${esc(main.shortForecast)}${dy.day && dy.night && dy.night.shortForecast !== dy.day.shortForecast ? `; night: ${esc(dy.night.shortForecast.toLowerCase())}` : ""}</span>
+        ${dayBadges(d.outlooks?.days?.[dy.key])}
       </button>
       <div class="detail">${openDays.has(dy.key) ? dayDetail(dy, i) : ""}</div>
     </div>`;
@@ -585,6 +767,7 @@ function render(staleNote) {
     </section>
     <div class="meta">${staleNote ? esc(staleNote) + " " : "Updated "}${updated}${obsFresh ? ` · observed at ${esc(d.obsStation)}` : ""}<button id="refresh">Refresh</button></div>
     ${alerts}
+    ${outlookCard(days)}
     <section class="card">
       <h2>${days.length}-day forecast</h2>
       ${dayRows}
@@ -610,6 +793,7 @@ function dayDetail(dy, i) {
   return `
     ${hours.length ? `<div class="strip">${hourStrip(hours, i === 0)}</div>` : `<div class="nohourly">Hourly detail isn't published this far out.</div>`}
     ${tot.length ? `<div class="totals">${tot.join(" · ")}</div>` : ""}
+    ${outlookDetail(d.outlooks?.days?.[dy.key])}
     <div class="words">${words}</div>`;
 }
 
