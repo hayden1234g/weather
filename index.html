@@ -14,6 +14,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Source+Serif+4:ital,opsz,wght@0,8..60,400;0,8..60,600;1,8..60,400&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
 <style>
   :root {
     --bg: #121418;
@@ -88,10 +89,38 @@
 
   /* alerts */
   .alert {
-    border-radius: 12px; margin-bottom: 10px; border: 1px solid var(--warn);
-    background: color-mix(in srgb, var(--warn) 12%, var(--card));
+    border-radius: 12px; margin-bottom: 10px; border: 1px solid var(--line);
+    background: var(--card);
   }
-  .alert.severe { border-color: var(--danger); background: color-mix(in srgb, var(--danger) 14%, var(--card)); }
+  .alert.warning { border-color: var(--danger); background: color-mix(in srgb, var(--danger) 16%, var(--card)); }
+  .alert.watch { border-color: var(--warn); background: color-mix(in srgb, var(--warn) 13%, var(--card)); }
+  .alert.advisory { border-color: #c9b84a; background: color-mix(in srgb, #c9b84a 9%, var(--card)); }
+  .alert.new { animation: alertpulse 1.6s ease-in-out 4; }
+  @keyframes alertpulse { 50% { box-shadow: 0 0 0 4px color-mix(in srgb, var(--danger) 55%, transparent); } }
+  .newtag { font-size: 11px; font-weight: 600; padding: 1px 6px; border-radius: 4px; background: var(--danger); color: #fff; vertical-align: 2px; display: inline !important; }
+  .adot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 6px; vertical-align: 1px; }
+  .adot.warning { background: var(--danger); box-shadow: 0 0 0 2px color-mix(in srgb, var(--danger) 40%, transparent); }
+  .adot.watch { background: var(--warn); }
+  .adot.advisory { background: #c9b84a; }
+
+  /* radar */
+  .radar { margin-bottom: 12px; position: relative; z-index: 0; isolation: isolate; } /* keep Leaflet's panes under the sticky header */
+  .radar h2 span { text-transform: none; letter-spacing: 0; }
+  #rmap { height: 320px; background: #0d0f12; }
+  .rctl { display: flex; align-items: center; gap: 10px; padding: 8px 14px 2px; font-size: 13px; color: var(--muted); }
+  .rctl button { width: 34px; height: 30px; border-radius: 8px; border: 1px solid var(--line); background: var(--card2); font-size: 14px; }
+  .rctl input { flex: 1; accent-color: var(--accent); }
+  .rctl span { min-width: 64px; text-align: right; font-variant-numeric: tabular-nums; }
+  .rlegend { display: flex; flex-wrap: wrap; gap: 4px 12px; padding: 6px 14px 10px; font-size: 12px; color: var(--muted); }
+  .rlegend i { display: inline-block; width: 14px; height: 10px; margin-right: 5px; vertical-align: -1px; border: 2px solid; }
+  .rhint { padding: 0 14px 8px; font-size: 12px; color: var(--muted); }
+  .leaflet-container { font-family: var(--serif); }
+  .leaflet-popup-content-wrapper, .leaflet-popup-tip { background: var(--card2); color: var(--text); }
+  .leaflet-popup-content { margin: 10px 12px; font-size: 13px; line-height: 1.35; }
+  .leaflet-popup-content b { font-size: 14px; }
+  .leaflet-control-attribution { background: rgba(18,20,24,.75) !important; color: var(--muted) !important; font-size: 10px; }
+  .leaflet-control-attribution a { color: var(--muted) !important; }
+  .leaflet-bar a { background: var(--card2) !important; color: var(--text) !important; border-color: var(--line) !important; }
   .alert summary { padding: 10px 12px; cursor: pointer; list-style: none; }
   .alert summary::-webkit-details-marker { display: none; }
   .alert summary b { display: block; }
@@ -212,6 +241,7 @@
   <footer>Data from the <a href="https://www.weather.gov" target="_blank" rel="noopener">National Weather Service</a>. All units imperial.</footer>
 </div>
 
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
 <script>
 "use strict";
 const $ = s => document.querySelector(s);
@@ -695,7 +725,7 @@ function renderChips() {
   const r = getRecents();
   $("#chips").innerHTML = r.map((l, i) => `
     <span class="chip ${sameLoc(l, loc) ? "on" : ""}">
-      <button data-go="${i}">${esc(locLabel(l))}</button><button class="x" data-rm="${i}" aria-label="Remove">×</button>
+      <button data-go="${i}">${(k => k ? `<i class="adot ${k}" title="Active ${k}"></i>` : "")(sameLoc(l, loc) && data ? topKind(data.alerts) : chipAlerts[chipKey(l)])}${esc(locLabel(l))}</button><button class="x" data-rm="${i}" aria-label="Remove">×</button>
     </span>`).join("");
 }
 $("#chips").addEventListener("click", e => {
@@ -880,15 +910,6 @@ function render(staleNote) {
   const today = days[0];
   const hiToday = today.day?.temperature, loToday = today.night?.temperature;
 
-  const alerts = d.alerts.map(a => {
-    const p = a.properties;
-    const severe = /Extreme|Severe/.test(p.severity);
-    const until = p.ends || p.expires;
-    return `<details class="alert ${severe ? "severe" : ""}">
-      <summary><b>⚠️ ${esc(p.event)}</b><span>${until ? `Until ${esc(fmt(until, { weekday: "short", hour: "numeric", minute: "2-digit" }))}` : esc(p.senderName || "")} · tap for details</span></summary>
-      <div class="body">${esc(p.description)}${p.instruction ? "\n\n" + esc(p.instruction) : ""}</div>
-    </details>`;
-  }).join("");
 
   // week temp range for the bars
   const allT = d.periods.map(p => p.temperature);
@@ -938,13 +959,18 @@ function render(staleNote) {
       ${showWbgt ? wbgtScale(wbNow, wReg.cat) : ""}
     </section>
     <div class="meta">${staleNote ? esc(staleNote) + " " : "Updated "}${updated}${obsFresh ? ` · observed at ${esc(d.obsStation)}` : ""}<button id="refresh">Refresh</button></div>
-    ${alerts}
+    ${alertsHtml(d.alerts)}
+    <div id="radarSlot"></div>
     ${outlookCard(days)}
     <section class="card">
       <h2>${days.length}-day forecast</h2>
       ${dayRows}
     </section>`;
   $("#refresh").onclick = () => load(loc);
+  const tk = topKind(d.alerts);
+  document.title = tk === "warning" ? "🚨 Weather" : tk === "watch" ? "⚠️ Weather" : "Weather";
+  // the radar map lives outside the re-rendered markup so it isn't rebuilt every refresh
+  if (typeof L !== "undefined") { $("#radarSlot").replaceWith(radarCard()); radarInit(); }
   // keep scroll position of an open strip at "now"
 }
 
@@ -1028,6 +1054,183 @@ $("#main").addEventListener("click", e => {
   row.setAttribute("aria-expanded", openDays.has(key));
 });
 
+/* ---------- alerts: sorted, explained, re-checked every minute ---------- */
+const alertKind = e => /Warning/i.test(e) ? "warning" : /Watch/i.test(e) ? "watch" : /Advisory/i.test(e) ? "advisory" : "statement";
+const KIND_RANK = { warning: 0, watch: 1, advisory: 2, statement: 3 };
+const SEV_RANK = { Extreme: 0, Severe: 1, Moderate: 2, Minor: 3 };
+const KIND_TEXT = {
+  warning: "Warning: happening now or about to. Act now.",
+  watch: "Watch: conditions favor it. Be ready to act.",
+  advisory: "Advisory: less dangerous, but take care.",
+  statement: "",
+};
+const alertId = a => a.id || a.properties.id;
+function sortAlerts(list) {
+  return [...list].sort((a, b) =>
+    (KIND_RANK[alertKind(a.properties.event)] - KIND_RANK[alertKind(b.properties.event)]) ||
+    ((SEV_RANK[a.properties.severity] ?? 4) - (SEV_RANK[b.properties.severity] ?? 4)) ||
+    (Date.parse(b.properties.sent) - Date.parse(a.properties.sent)));
+}
+// "NEW" for 15 minutes after this device first sees an alert
+function alertIsNew(id) {
+  const seen = store.get("wx.alertSeen", {}), now = Date.now();
+  if (!seen[id]) { seen[id] = now; for (const k in seen) if (now - seen[k] > 3 * 86400e3) delete seen[k]; store.set("wx.alertSeen", seen); }
+  return now - seen[id] < 15 * 60e3;
+}
+const openAlerts = new Set();
+function alertsHtml(list) {
+  return sortAlerts(list).map(a => {
+    const p = a.properties, id = alertId(a), kind = alertKind(p.event), isNew = alertIsNew(id);
+    const until = p.ends || p.expires;
+    return `<details class="alert ${kind}${isNew ? " new" : ""}" data-id="${esc(id)}" ${openAlerts.has(id) ? "open" : ""}>
+      <summary><b>${kind === "warning" ? "🚨" : "⚠️"} ${esc(p.event)}${isNew ? ` <span class="newtag">NEW</span>` : ""}</b>
+        <span>${until ? `Until ${esc(fmt(until, { weekday: "short", hour: "numeric", minute: "2-digit" }))}` : esc(p.senderName || "")}${KIND_TEXT[kind] ? ` · ${KIND_TEXT[kind]}` : ""}</span></summary>
+      <div class="body">${p.headline ? `<b>${esc(p.headline)}</b>\n\n` : ""}${esc(p.description)}${p.instruction ? "\n\n" + esc(p.instruction) : ""}</div>
+    </details>`;
+  }).join("");
+}
+const topKind = list => ["warning", "watch", "advisory"].find(k => list.some(a => alertKind(a.properties.event) === k));
+$("#main").addEventListener("toggle", e => {
+  const d = e.target; if (!d.matches?.(".alert")) return;
+  if (d.open) openAlerts.add(d.dataset.id); else openAlerts.delete(d.dataset.id);
+}, true);
+
+async function pollAlerts() {
+  if (document.visibilityState !== "visible" || !loc || !data) return;
+  const l = loc;
+  try {
+    const d = await getJSON(`https://api.weather.gov/alerts/active?point=${l.lat},${l.lon}`, 1);
+    if (!sameLoc(l, loc) || !data) return;
+    const ids = x => x.map(alertId).sort().join("|");
+    if (ids(d.features || []) !== ids(data.alerts)) { data.alerts = d.features || []; render(); renderChips(); }
+  } catch {}
+  radarWarnings();
+}
+setInterval(pollAlerts, 60e3);
+
+// alert dots on the saved-location chips
+let chipAlerts = {};
+const chipKey = l => `${(+l.lat).toFixed(2)},${(+l.lon).toFixed(2)}`;
+async function pollChipAlerts() {
+  if (document.visibilityState !== "visible") return;
+  const r = getRecents();
+  const res = await Promise.allSettled(r.map(l => getJSON(`https://api.weather.gov/alerts/active?point=${(+l.lat).toFixed(4)},${(+l.lon).toFixed(4)}`, 1)));
+  const next = {};
+  res.forEach((x, i) => { if (x.status === "fulfilled") { const k = topKind(x.value.features || []); if (k) next[chipKey(r[i])] = k; } });
+  chipAlerts = next; renderChips();
+}
+setInterval(pollChipAlerts, 5 * 60e3);
+
+/* ---------- radar map: IEM NEXRAD mosaic loop + NWS warnings and watches ---------- */
+const RADAR_FRAMES = [50, 45, 40, 35, 30, 25, 20, 15, 10, 5, 0]; // minutes ago
+const WARN = {
+  "Tornado Warning": "#ff0000", "Severe Thunderstorm Warning": "#ffa500", "Flash Flood Warning": "#8b0000",
+  "Extreme Wind Warning": "#ff8c00", "Snow Squall Warning": "#c71585", "Special Marine Warning": "#ffa500",
+};
+const WATCH = { TO: { name: "Tornado Watch", c: "#ffff00" }, SV: { name: "Severe Thunderstorm Watch", c: "#db7093" }, FF: { name: "Flash Flood Watch", c: "#2e8b57" } };
+let R = null;
+function radarCard() {
+  if (R) return R.el;
+  const el = document.createElement("section");
+  el.className = "card radar";
+  const sw = (c, dash, label) => `<span><i style="border-color:${c};${dash ? "border-style:dashed;" : `background:${c}33;`}"></i>${label}</span>`;
+  el.innerHTML = `<h2>Radar <span id="rtime"></span></h2>
+    <div id="rmap"></div>
+    ${L.Browser.mobile ? `<div class="rhint" id="rhint">Tap the map to pan; pinch to zoom.</div>` : ""}
+    <div class="rctl"><button id="rplay" aria-label="Play loop">▶</button>
+      <input id="rslide" type="range" min="0" max="${RADAR_FRAMES.length - 1}" value="${RADAR_FRAMES.length - 1}" aria-label="Radar time">
+      <span id="rlabel"></span></div>
+    <div class="rlegend">${sw(WARN["Tornado Warning"], 0, "Tornado")}${sw(WARN["Severe Thunderstorm Warning"], 0, "Severe t-storm")}${sw(WARN["Flash Flood Warning"], 0, "Flash flood")}
+      ${sw(WATCH.TO.c, 1, "Tornado watch")}${sw(WATCH.SV.c, 1, "Svr t-storm watch")}${sw(WATCH.FF.c, 1, "Flash flood watch")}</div>`;
+  R = { el, frames: [], idx: RADAR_FRAMES.length - 1, timer: 0, stamp: null, warn: null, watch: null, locKey: "" };
+  el.querySelector("#rplay").onclick = () => radarPlay(!R.timer);
+  el.querySelector("#rslide").oninput = e => { radarPlay(false); radarShow(+e.target.value); };
+  return el;
+}
+function radarInit() {
+  if (!R.map) {
+    const m = R.map = L.map("rmap", { scrollWheelZoom: false, dragging: !L.Browser.mobile, tap: false, zoomSnap: 0.5 }).setView([loc.lat, loc.lon], 8);
+    L.tileLayer("https://services.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Base/MapServer/tile/{z}/{y}/{x}", {
+      maxZoom: 12, maxNativeZoom: 16,
+      attribution: '&copy; Esri, OSM · radar <a href="https://mesonet.agron.iastate.edu/">IEM</a> · NWS',
+    }).addTo(m);
+    m.createPane("labels"); m.getPane("labels").style.zIndex = 450; m.getPane("labels").style.pointerEvents = "none";
+    L.tileLayer("https://services.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Reference/MapServer/tile/{z}/{y}/{x}", { maxZoom: 12, pane: "labels" }).addTo(m);
+    R.marker = L.circleMarker([loc.lat, loc.lon], { radius: 6, color: "#fff", weight: 2, fillColor: "#e6b46e", fillOpacity: 1, pane: "markerPane" }).addTo(m);
+    if (L.Browser.mobile) m.on("click", () => { m.dragging.enable(); const h = document.getElementById("rhint"); if (h) h.textContent = "Map unlocked: drag to pan."; });
+    let t = 0; m.on("moveend", () => { clearTimeout(t); t = setTimeout(radarWatches, 500); });
+    radarFrames(); radarWarnings(); radarWatches();
+    setInterval(() => { if (document.visibilityState === "visible") radarFrames(); }, 5 * 60e3);
+  }
+  const key = `${loc.lat},${loc.lon}`;
+  if (R.locKey && R.locKey !== key) { R.map.setView([loc.lat, loc.lon], 8); R.marker.setLatLng([loc.lat, loc.lon]); }
+  R.locKey = key;
+  requestAnimationFrame(() => R.map.invalidateSize());
+}
+async function radarFrames() {
+  let stamp;
+  try { stamp = (await getJSON("https://mesonet.agron.iastate.edu/data/gis/images/4326/USCOMP/n0q_0.json", 1)).meta.valid; } catch { stamp = new Date(Math.floor(Date.now() / 300e3) * 300e3 - 300e3).toISOString(); }
+  if (stamp === R.stamp) return;
+  R.stamp = stamp;
+  R.frames.forEach(l => R.map.removeLayer(l));
+  R.frames = RADAR_FRAMES.map(m => L.tileLayer(
+    `https://mesonet.agron.iastate.edu/cache/tile.py/1.0.0/nexrad-n0q-900913${m ? `-m${String(m).padStart(2, "0")}m` : ""}/{z}/{x}/{y}.png?v=${encodeURIComponent(stamp)}`,
+    { opacity: 0, maxNativeZoom: 9, maxZoom: 12, zIndex: 300 }).addTo(R.map));
+  radarShow(R.timer ? R.idx : RADAR_FRAMES.length - 1);
+}
+function radarShow(i) {
+  R.idx = i;
+  R.frames.forEach((l, j) => l.setOpacity(j === i ? 0.75 : 0));
+  const t = Date.parse(R.stamp) - RADAR_FRAMES[i] * 60e3;
+  $("#rlabel").textContent = fmt(t, { hour: "numeric", minute: "2-digit" });
+  $("#rslide").value = i;
+  $("#rtime").textContent = `· ${RADAR_FRAMES[i] ? RADAR_FRAMES[i] + " min ago" : "latest"}`;
+}
+function radarPlay(on) {
+  clearInterval(R.timer); R.timer = 0;
+  $("#rplay").textContent = on ? "❚❚" : "▶";
+  if (!on) return;
+  let hold = 0;
+  R.timer = setInterval(() => {
+    if (document.visibilityState !== "visible") return;
+    if (R.idx === RADAR_FRAMES.length - 1 && hold++ < 3) return; // linger on the latest frame
+    hold = 0; radarShow((R.idx + 1) % RADAR_FRAMES.length);
+  }, 450);
+}
+const until = t => t ? `Until ${fmt(t, { weekday: "short", hour: "numeric", minute: "2-digit" })}` : "";
+async function radarWarnings() {
+  if (!R?.map) return;
+  try {
+    const d = await getJSON(`https://api.weather.gov/alerts/active?status=actual&event=${encodeURIComponent(Object.keys(WARN).join(","))}`, 1);
+    if (R.warn) R.map.removeLayer(R.warn);
+    R.warn = L.geoJSON({ type: "FeatureCollection", features: (d.features || []).filter(f => f.geometry) }, {
+      style: f => ({ color: WARN[f.properties.event] || "#fff", weight: 2.5, fillOpacity: 0.12 }),
+      onEachFeature: (f, layer) => {
+        const p = f.properties;
+        layer.bindPopup(`<b>${esc(p.event)}</b><br>${esc(until(p.ends || p.expires))}<br>${esc(p.areaDesc || "")}${p.parameters?.tornadoDetection ? `<br>Tornado: ${esc(p.parameters.tornadoDetection[0])}` : ""}${parseFloat(p.parameters?.maxHailSize?.[0]) > 0 ? `<br>Hail up to ${esc(p.parameters.maxHailSize[0])}"` : ""}${p.parameters?.maxWindGust ? `<br>Gusts ${esc(p.parameters.maxWindGust[0])}` : ""}`);
+      },
+    }).addTo(R.map);
+  } catch {}
+}
+async function radarWatches() {
+  if (!R?.map) return;
+  const b = R.map.getBounds().pad(0.3);
+  const q = new URLSearchParams({
+    where: "sig='A' AND phenom IN ('TO','SV','FF')", outFields: "phenom,expiration,wfo",
+    geometry: `${b.getWest()},${b.getSouth()},${b.getEast()},${b.getNorth()}`, geometryType: "esriGeometryEnvelope", inSR: "4326",
+    spatialRel: "esriSpatialRelIntersects", outSR: "4326", maxAllowableOffset: "0.01", geometryPrecision: "3", f: "geojson",
+  });
+  try {
+    const d = await getJSON(`https://mapservices.weather.noaa.gov/eventdriven/rest/services/WWA/watch_warn_adv/MapServer/1/query?${q}`, 1);
+    if (R.watch) R.map.removeLayer(R.watch);
+    R.watch = L.geoJSON(d, {
+      style: f => ({ color: WATCH[f.properties.phenom]?.c || "#ccc", weight: 1.5, dashArray: "6 5", fillOpacity: 0.05 }),
+      onEachFeature: (f, layer) => layer.bindPopup(`<b>${esc(WATCH[f.properties.phenom]?.name || "Watch")}</b><br>${esc(until(f.properties.expiration))}`),
+    }).addTo(R.map);
+    R.watch.bringToBack();
+  } catch {}
+}
+
 /* ---------- refresh when coming back to the app ---------- */
 document.addEventListener("visibilitychange", () => {
   if (document.visibilityState === "visible" && loc && data && Date.now() - data.fetched > 10 * 60e3) load(loc, { quiet: true });
@@ -1035,6 +1238,7 @@ document.addEventListener("visibilitychange", () => {
 setInterval(() => { if (document.visibilityState === "visible" && loc) load(loc, { quiet: true }); }, 15 * 60e3);
 
 /* ---------- boot ---------- */
+setTimeout(pollChipAlerts, 4000);
 (function boot() {
   renderChips();
   const qs = new URLSearchParams(location.search);
