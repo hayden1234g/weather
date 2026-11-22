@@ -133,7 +133,7 @@
   .day { border-bottom: 1px solid var(--line); }
   .day:last-child { border-bottom: 0; }
   .dayrow {
-    display: grid; grid-template-columns: 74px 34px 44px 1fr; align-items: center; gap: 8px;
+    display: grid; grid-template-columns: 74px 34px 54px 1fr; align-items: center; gap: 8px;
     width: 100%; padding: 12px 14px; border: 0; background: none; text-align: left;
   }
   .dayrow:hover { background: var(--card2); }
@@ -141,7 +141,9 @@
   .dname { font-weight: 600; }
   .dname small { display: block; font-weight: 400; color: var(--muted); font-size: 12px; }
   .demoji { font-size: 24px; text-align: center; }
-  .dpop { color: var(--rain); font-size: 14px; text-align: center; }
+  .dpop { color: var(--rain); font-size: 13px; text-align: left; line-height: 1.25; white-space: nowrap; }
+  .dpop span { display: block; }
+  .dpop .lowp { color: var(--muted); }
   .range { display: grid; grid-template-columns: 34px 1fr 34px; align-items: center; gap: 8px; }
   .range .lo { color: var(--muted); text-align: right; }
   .range .hi { text-align: left; }
@@ -212,6 +214,22 @@
   .wfoot select { background: var(--card); border: 1px solid var(--line); border-radius: 6px; color: var(--text); font: inherit; font-size: 12px; padding: 2px 4px; }
   .wfoot a, .wfoot button { color: var(--accent); background: none; border: 0; padding: 0; font: inherit; font-size: 12px; text-decoration: underline; }
 
+  /* upper-air maps */
+  .ua { margin-top: 12px; }
+  .ua summary { list-style: none; cursor: pointer; }
+  .ua summary::-webkit-details-marker { display: none; }
+  .ua h2 span { text-transform: none; letter-spacing: 0; }
+  .ua:not([open]) h2 { border-bottom: 0; }
+  .uatabs { display: flex; gap: 4px; padding: 10px 14px 0; flex-wrap: wrap; }
+  .uatabs button { border: 1px solid var(--line); background: var(--card2); border-radius: 999px; padding: 2px 10px; font-size: 13px; }
+  .uatabs button.on { border-color: var(--accent); color: var(--accent); }
+  .uanav { display: flex; justify-content: space-between; align-items: center; padding: 8px 14px; font-size: 13px; }
+  .uanav button { border: 0; background: none; color: var(--accent); font-size: 13px; padding: 0; }
+  .uanav button:disabled { color: var(--muted); opacity: .5; }
+  .uaimg { display: block; width: 100%; height: auto; background: #fff; }
+  .uamiss { padding: 20px 14px; color: var(--muted); font-style: italic; }
+  .k { color: var(--muted); }
+
   .msg { text-align: center; color: var(--muted); padding: 60px 16px; }
   .msg .big { font-size: 48px; }
   .msg button { margin-top: 12px; padding: 8px 16px; border-radius: 10px; border: 1px solid var(--line); background: var(--card); }
@@ -221,7 +239,7 @@
   @keyframes spin { to { transform: rotate(360deg); } }
 
   @media (max-width: 420px) {
-    .dayrow { grid-template-columns: 62px 30px 36px 1fr; gap: 6px; padding: 12px 10px; }
+    .dayrow { grid-template-columns: 58px 28px 48px 1fr; gap: 6px; padding: 12px 10px; }
     .range { grid-template-columns: 30px 1fr 30px; gap: 6px; }
     .bigtemp { font-size: 72px; }
   }
@@ -548,7 +566,7 @@ function outlookDetail(o) {
   if (hz.length) L.push(`<div><span class="k">SPC odds within 25 mi:</span> ${hz.map(([k, h]) => `${HAZ[k].short} ${h.pct}%${h.cig ? ` (hatched, level ${h.cig})` : ""}`).join(" · ")}</div>`);
   if (o.spc48) L.push(`<div><span class="k">SPC days 4–8:</span> ${o.spc48}% chance of severe storms within 25 mi</div>`);
   if (o.ero) L.push(`<div><span class="k">WPC excessive rain:</span> ${o.ero} (${ERO[o.ero].n} of 4)</div>`);
-  if (o.qpf && o.qpf.in > 0) L.push(`<div><span class="k">WPC precip forecast:</span> ${o.qpf.in < 0.1 ? "a trace–0.1" : "≈ " + o.qpf.in.toFixed(2)} in${o.qpf.span > 1 ? ` over ${o.qpf.span} days` : ""}</div>`);
+  if (o.qpf && o.qpf.in > 0) L.push(`<div><span class="k">WPC precip (liquid equivalent):</span> ${o.qpf.in < 0.1 ? "a trace–0.1" : "≈ " + o.qpf.in.toFixed(2)} in${o.qpf.span > 1 ? ` over ${o.qpf.span} days` : ""}</div>`);
   if (o.wssi) L.push(`<div><span class="k">WPC winter impact:</span> ${WSSI[o.wssi].name}</div>`);
   if (o.winter) L.push(`<div><span class="k">WPC odds:</span> ${o.winter.join(" · ")}</div>`);
   return L.length ? `<div class="olist">${L.join("")}</div>` : "";
@@ -621,7 +639,7 @@ function outlookCard(days) {
     <div class="orow"><div class="lbl"><span>⚡ Severe storms <span class="k" style="color:var(--muted)">(SPC 1–5 · tap a day)</span></span><a href="https://www.spc.noaa.gov/products/outlook/" target="_blank" rel="noopener">maps ↗</a></div>${spcRow}${panelIdx >= 0 ? spcPanel(O.days[spcOpen] || {}, days[panelIdx], panelIdx) : ""}</div>
     <div class="orow"><div class="lbl"><span>🌊 Flash flooding <span style="color:var(--muted)">(WPC, risk 1–4)</span></span><a href="https://www.wpc.ncep.noaa.gov/qpf/excessive_rainfall_outlook_ero.php" target="_blank" rel="noopener">maps ↗</a></div>${eroRow}</div>
     ${anyWinter ? `<div class="orow"><div class="lbl"><span>❄ Winter impact <span style="color:var(--muted)">(WPC WSSI)</span></span><a href="https://www.wpc.ncep.noaa.gov/wwd/wssi/wssi.php" target="_blank" rel="noopener">maps ↗</a></div>${wssiRow}</div>` : ""}
-    <div class="onote">WPC 7-day precip (melted): <b style="color:var(--text)">${O.qpf7 ? `≈ ${O.qpf7.toFixed(2)} in` : "none expected"}</b> · <a href="https://www.wpc.ncep.noaa.gov/qpf/qpf2.shtml" target="_blank" rel="noopener" style="color:var(--muted)">QPF maps ↗</a>${O.failed ? ` · some outlooks didn't load` : ""}</div>
+    <div class="onote">WPC 7-day precip (liquid equivalent): <b style="color:var(--text)">${O.qpf7 ? `≈ ${O.qpf7.toFixed(2)} in` : "none expected"}</b> · <a href="https://www.wpc.ncep.noaa.gov/qpf/qpf2.shtml" target="_blank" rel="noopener" style="color:var(--muted)">QPF maps ↗</a>${O.failed ? ` · some outlooks didn't load` : ""}</div>
   </section>`;
 }
 
@@ -834,8 +852,15 @@ async function load(l, { quiet = false } = {}) {
     let obs = null;
     const station = st.value?.features?.[0];
     if (station) {
-      obs = await getJSON(`${station.id}/observations/latest`, 2).catch(() => null);
+      const since = new Date(Date.now() - 26 * 3600e3).toISOString();
+      const [latest, hist] = await Promise.all([
+        getJSON(`${station.id}/observations/latest`, 2).catch(() => null),
+        getJSON(`${station.id}/observations?start=${encodeURIComponent(since)}&limit=200`, 1).catch(() => null),
+      ]);
+      obs = latest;
       if (obs) obs.stationName = station.properties.name;
+      if (obs && hist) obs.hist = (hist.features || []).map(f => f.properties)
+        .map(o => ({ t: Date.parse(o.timestamp), temp: o.temperature?.value, p: o.barometricPressure?.value })).filter(o => o.t);
     }
     if (seq !== loadSeq) return;
     const prevOutlooks = data && sameLoc(data.loc, loc) ? data.outlooks : null;
@@ -845,7 +870,7 @@ async function load(l, { quiet = false } = {}) {
       hours: hr.value?.properties?.periods || [],
       grid: grid.value?.properties || null,
       alerts: al.value?.features || [],
-      obs: obs?.properties || null, obsStation: obs?.stationName || "",
+      obs: obs?.properties || null, obsStation: obs?.stationName || "", obsHist: obs?.hist || [],
       outlooks: prevOutlooks,
     };
     store.set("wx.last", loc);
@@ -909,6 +934,25 @@ function render(staleNote) {
   const dew = obsFresh && o.dewpoint?.value != null ? cToF(o.dewpoint.value) : cToF(firstHour?.dewpoint?.value);
   const today = days[0];
   const hiToday = today.day?.temperature, loToday = today.night?.temperature;
+  // after ~6pm NWS drops "Today"; show the high the station actually recorded since local midnight
+  const todayObs = (d.obsHist || []).filter(x => x.temp != null && dayKey(x.t) === dayKey(now));
+  const obsHigh = todayObs.length >= 6 ? Math.round(cToF(Math.max(...todayObs.map(x => x.temp)))) : null;
+  const hiShown = hiToday ?? obsHigh;
+  // pressure (altimeter) and its 3-hour change from the same station
+  const pNow = obsFresh ? o.barometricPressure?.value : null;
+  const p3 = pNow != null ? (d.obsHist || []).filter(x => x.p != null && Math.abs(x.t - (Date.parse(o.timestamp) - 3 * 3600e3)) < 40 * 60e3)
+    .sort((a, b) => Math.abs(a.t - (Date.parse(o.timestamp) - 3 * 3600e3)) - Math.abs(b.t - (Date.parse(o.timestamp) - 3 * 3600e3)))[0] : null;
+  let pres = "";
+  if (pNow != null) {
+    const inHg = pNow / 3386.389, mb = (o.seaLevelPressure?.value ?? pNow) / 100;
+    let trend = "";
+    if (p3) {
+      const dIn = (pNow - p3.p) / 3386.389;
+      const word = Math.abs(dIn) < 0.02 ? "steady" : `${Math.abs(dIn) >= 0.18 ? "rapidly " : ""}${dIn > 0 ? "rising" : "falling"}`;
+      trend = ` ${dIn >= 0.02 ? "↑" : dIn <= -0.02 ? "↓" : "→"} <span class="k">${word} (${dIn >= 0 ? "+" : "−"}${Math.abs(dIn).toFixed(2)} in / 3 h)</span>`;
+    }
+    pres = `<span>Pressure <b>${inHg.toFixed(2)} in</b> <span class="k">${mb.toFixed(1)} mb</span>${trend}</span>`;
+  }
 
 
   // week temp range for the bars
@@ -921,7 +965,9 @@ function render(staleNote) {
     const main = dy.day || dy.night;
     const hi = dy.day?.temperature, lo = dy.night?.temperature;
     const a = lo ?? hi, b = hi ?? lo;
-    const p = Math.max(pop(dy.day), pop(dy.night));
+    const pd = dy.day ? pop(dy.day) : null, pn = dy.night ? pop(dy.night) : null, p = Math.max(pd ?? 0, pn ?? 0);
+    const popCell = p >= 10 ? [[pd, "☀", "Day"], [pn, "☾", "Night"]].filter(([v]) => v != null)
+      .map(([v, sym, t]) => `<span title="${t} chance of precipitation" class="${v >= 10 ? "" : "lowp"}">${sym} ${v >= 10 ? v + "%" : "–"}</span>`).join("") : "";
     const left = (a - wMin) / wSpan * 100, width = Math.max((b - a) / wSpan * 100, 3);
     const name = i === 0 ? "Today" : fmt(dy.t, { weekday: "short" });
     const date = fmt(dy.t, { month: "short", day: "numeric" });
@@ -929,7 +975,7 @@ function render(staleNote) {
       <button class="dayrow" aria-expanded="${openDays.has(dy.key)}">
         <span class="dname">${name}<small>${date}</small></span>
         <span class="demoji">${emojiFor(main.icon, main.isDaytime, main.shortForecast)}</span>
-        <span class="dpop">${p >= 10 ? `${p}%` : ""}</span>
+        <span class="dpop">${popCell}</span>
         <span class="range">
           <span class="lo">${lo != null ? lo + "°" : ""}</span>
           <span class="track"><i style="left:${left}%;width:${width}%;background:linear-gradient(90deg,${tcol(a)},${tcol(b)})"></i></span>
@@ -948,11 +994,12 @@ function render(staleNote) {
       <div class="place">${esc(locLabel(d.loc))}</div>
       <div class="bigtemp">${rnd(temp)}°</div>
       <div class="cond">${esc(cond)}</div>
-      <div class="hilo">${hiToday != null ? `H ${hiToday}°` : ""}${hiToday != null && loToday != null ? " · " : ""}${loToday != null ? `L ${loToday}°` : ""}</div>
+      <div class="hilo">${hiShown != null ? `H ${hiShown}°${hiToday == null ? ` <span class="k">(observed)</span>` : ""}` : ""}${hiShown != null && loToday != null ? " · " : ""}${loToday != null ? `L ${loToday}°` : ""}</div>
       <div class="facts">
         ${feels != null && temp - feels >= 2 ? `<span>Feels like <b>${rnd(feels)}°</b> (wind chill)</span>` : ""}
         ${showWbgt ? `<span>Heat stress (WBGT) ${wbgtChip(wbNow, wReg.cat)}</span>` : ""}
         <span>Wind <b>${esc(wind)}</b></span>
+        ${pres}
         ${hum != null ? `<span>Humidity <b>${rnd(hum)}%</b></span>` : ""}
         ${dew != null ? `<span>Dew point <b>${rnd(dew)}°</b></span>` : ""}
       </div>
@@ -965,7 +1012,8 @@ function render(staleNote) {
       <h2>${days.length}-day forecast</h2>
       ${dayRows}
     </section>
-    <div id="radarSlot"></div>`;
+    <div id="radarSlot"></div>
+    ${uaCard()}`;
   $("#refresh").onclick = () => load(loc);
   const tk = topKind(d.alerts);
   document.title = tk === "warning" ? "🚨 Weather" : tk === "watch" ? "⚠️ Weather" : "Weather";
@@ -985,7 +1033,7 @@ function dayDetail(dy, i) {
   const rain = mmToIn(sumBetween(series(d.grid?.quantitativePrecipitation), dayStart, dayEnd));
   const snow = mmToIn(sumBetween(series(d.grid?.snowfallAmount), dayStart, dayEnd));
   const tot = [];
-  if (rain >= 0.01) tot.push(`Precipitation ≈ <b>${rain.toFixed(2)} in</b>`);
+  if (rain >= 0.01) tot.push(`Precip (liquid equivalent) ≈ <b>${rain.toFixed(2)} in</b>`);
   if (snow >= 0.1) tot.push(`Snow ≈ <b>${snow.toFixed(1)} in</b>`);
   const words = [dy.day, dy.night].filter(Boolean).map(p => `<p><b>${esc(p.name)}:</b> ${esc(p.detailedForecast)}</p>`).join("");
   const reg = wbgtRegion(), wMax = wbgtDayMax(dy);
@@ -1038,6 +1086,9 @@ $("#main").addEventListener("change", e => {
   if (e.target.matches(".wcat")) { store.set(wbgtKey(), +e.target.value); render(); }
 });
 $("#main").addEventListener("click", e => {
+  const ua = e.target.closest("[data-ua]"), ub = e.target.closest("[data-uaback]");
+  if (ua) { uaLevel = ua.dataset.ua; store.set("wx.uaLevel", uaLevel); render(); return; }
+  if (ub) { uaBack = Math.max(0, uaBack + +ub.dataset.uaback); render(); return; }
   if (e.target.closest(".wreset")) { try { localStorage.removeItem(wbgtKey()); } catch {} render(); return; }
   const sc = e.target.closest("[data-spc]");
   if (sc) { spcOpen = spcOpen === sc.dataset.spc ? null : sc.dataset.spc; render(); return; }
@@ -1090,8 +1141,40 @@ function alertsHtml(list) {
   }).join("");
 }
 const topKind = list => ["warning", "watch", "advisory"].find(k => list.some(a => alertKind(a.properties.event) === k));
+/* ---------- upper-air maps (SPC objective analyses, 00Z/12Z) ----------
+   Images load only when the card is opened, so they cost nothing otherwise. */
+const UA_LEVELS = [["sfc", "Sfc"], ["925", "925"], ["850", "850"], ["700", "700"], ["500", "500"], ["300", "300"], ["250", "250"]];
+let uaOpen = false, uaBack = 0, uaLevel = store.get("wx.uaLevel", "500");
+// SPC builds the maps ~1 hour after each cycle (0101/1301 UTC, redone an hour later)
+function uaCycle(back) {
+  const d = new Date(Date.now() - 70 * 60e3);
+  return Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate(), d.getUTCHours() >= 12 ? 12 : 0) - back * 12 * 3600e3;
+}
+function uaUrl(level, c) {
+  const d = new Date(c), z = n => String(n).padStart(2, "0");
+  return `https://www.spc.noaa.gov/obswx/maps/${level}_${z(d.getUTCFullYear() % 100)}${z(d.getUTCMonth() + 1)}${z(d.getUTCDate())}_${z(d.getUTCHours())}.gif`;
+}
+function uaCard() {
+  const c = uaCycle(uaBack), url = uaUrl(uaLevel, c);
+  const label = `${new Date(c).getUTCHours() ? "12Z" : "00Z"} ${new Intl.DateTimeFormat("en-US", { timeZone: "UTC", weekday: "short", month: "short", day: "numeric" }).format(c)}`;
+  return `<details class="card ua" ${uaOpen ? "open" : ""}>
+    <summary><h2>Upper-air maps <span>· SPC · ${label} ▾</span></h2></summary>
+    <div class="uatabs">${UA_LEVELS.map(([v, n]) => `<button data-ua="${v}" class="${v === uaLevel ? "on" : ""}">${n}${v === "sfc" ? "" : " mb"}</button>`).join("")}</div>
+    <div class="uanav"><button data-uaback="1">◀ older</button><span>${label} <span class="k">(${fmt(c, { hour: "numeric" })} local)</span></span><button data-uaback="-1" ${uaBack ? "" : "disabled"}>newer ▶</button></div>
+    ${uaOpen ? `<a href="${url}" target="_blank" rel="noopener"><img class="uaimg" src="${url}" alt="SPC ${uaLevel} analysis ${label}"></a>
+      <div class="uamiss" hidden>This map isn't posted yet. Try "older".</div>` : ""}
+    <div class="onote">SPC's objective analyses of the 00Z and 12Z balloon soundings, posted about an hour after each launch. Tap the map for full size.</div>
+  </details>`;
+}
+$("#main").addEventListener("error", e => {
+  if (!e.target.matches?.(".uaimg")) return;
+  e.target.closest("a").hidden = true; e.target.closest(".ua").querySelector(".uamiss").hidden = false;
+}, true);
+
 $("#main").addEventListener("toggle", e => {
-  const d = e.target; if (!d.matches?.(".alert")) return;
+  const d = e.target;
+  if (d.matches?.(".ua")) { if (d.open !== uaOpen) { uaOpen = d.open; render(); } return; }
+  if (!d.matches?.(".alert")) return;
   if (d.open) openAlerts.add(d.dataset.id); else openAlerts.delete(d.dataset.id);
 }, true);
 
