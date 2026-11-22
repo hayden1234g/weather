@@ -168,6 +168,21 @@
   .olist div { margin-top: 4px; }
   .olist .k { color: var(--muted); }
 
+  /* heat stress (WBGT) */
+  .wchip { display: inline-block; padding: 0 8px; border-radius: 999px; font-weight: 600; margin-left: 4px; }
+  .wscale { max-width: 420px; margin: 12px auto 0; text-align: left; font-size: 12px; color: var(--muted); padding: 0 14px; }
+  .detail .wscale { max-width: none; margin: 10px 0 0; }
+  .wlabel { font-size: 14px; color: var(--text); margin-bottom: 6px; }
+  .wnames, .wticks { position: relative; height: 16px; }
+  .wnames span, .wticks span { position: absolute; transform: translateX(-50%); white-space: nowrap; }
+  .wnames span { font-size: 11px; }
+  .wbar { position: relative; height: 10px; border-radius: 5px; overflow: hidden; outline: 1px solid var(--line); }
+  .wbar i { position: absolute; top: 0; bottom: 0; }
+  .wbar b { position: absolute; top: -3px; bottom: -3px; width: 4px; margin-left: -2px; background: #fff; border-radius: 2px; box-shadow: 0 0 0 1.5px #000; }
+  .wfoot { display: flex; flex-wrap: wrap; gap: 6px 12px; align-items: center; margin-top: 2px; }
+  .wfoot select { background: var(--card); border: 1px solid var(--line); border-radius: 6px; color: var(--text); font: inherit; font-size: 12px; padding: 2px 4px; }
+  .wfoot a, .wfoot button { color: var(--accent); background: none; border: 0; padding: 0; font: inherit; font-size: 12px; text-decoration: underline; }
+
   .msg { text-align: center; color: var(--muted); padding: 60px 16px; }
   .msg .big { font-size: 48px; }
   .msg button { margin-top: 12px; padding: 8px 16px; border-radius: 10px; border: 1px solid var(--line); background: var(--card); }
@@ -479,13 +494,19 @@ async function fetchOutlooks(lat, lon) {
   return { days, qpf7, failed, fetched: Date.now() };
 }
 
-function dayBadges(o) {
-  if (!o) return "";
+function wbgtBadge(dy, cat) {
+  const m = wbgtDayMax(dy), lv = m != null ? wbgtLevel(m, cat) : 0;
+  return lv >= 1 ? `<span class="badge" style="background:${WBGT_LEVELS[lv].c};color:${WBGT_LEVELS[lv].fg}">🌡 ${WBGT_LEVELS[lv].name} heat stress</span>` : "";
+}
+function dayBadges(o, extra = "") {
+  if (!o && !extra) return "";
+  o ||= {};
   const b = [];
   if (o.spc) b.push(o.spc === "TSTM" ? `<span class="badge dim">⚡ T-storms</span>` : `<span class="badge" style="background:${SPC[o.spc].c}">⚡ ${SPC[o.spc].name} severe risk</span>`);
   else if (o.spc48) b.push(`<span class="badge" style="background:${o.spc48 >= 30 ? SPC.ENH.c : SPC.SLGT.c}">⚡ ${o.spc48}% severe</span>`);
   if (o.ero) b.push(`<span class="badge" style="background:${ERO[o.ero].c}">🌊 ${o.ero} flood risk</span>`);
   if (o.wssi) b.push(o.wssi === "WINTER WEATHER AREA" ? `<span class="badge dim">❄ Winter weather</span>` : `<span class="badge" style="background:${WSSI[o.wssi].c}">❄ ${WSSI[o.wssi].name} winter impact</span>`);
+  if (extra) b.push(extra);
   return b.length ? `<span class="badges">${b.join("")}</span>` : "";
 }
 
@@ -572,6 +593,84 @@ function outlookCard(days) {
     ${anyWinter ? `<div class="orow"><div class="lbl"><span>❄ Winter impact <span style="color:var(--muted)">(WPC WSSI)</span></span><a href="https://www.wpc.ncep.noaa.gov/wwd/wssi/wssi.php" target="_blank" rel="noopener">maps ↗</a></div>${wssiRow}</div>` : ""}
     <div class="onote">WPC 7-day precip (melted): <b style="color:var(--text)">${O.qpf7 ? `≈ ${O.qpf7.toFixed(2)} in` : "none expected"}</b> · <a href="https://www.wpc.ncep.noaa.gov/qpf/qpf2.shtml" target="_blank" rel="noopener" style="color:var(--muted)">QPF maps ↗</a>${O.failed ? ` · some outlooks didn't load` : ""}</div>
   </section>`;
+}
+
+/* ---------- heat stress: NWS WBGT forecast + regional categories ----------
+   The WBGT numbers are the NWS's own forecast (NDFD wetBulbGlobeTemperature in the gridpoint data).
+   Category cutoffs are the regional guidelines from Grundstein et al. (2015) as published by the
+   Korey Stringer Institute; the NWS uses the same Low → Extreme names. Lower bounds in °F for
+   Elevated, Moderate, High, Extreme. */
+const WBGT_CUTS = { 1: [76.2, 81.2, 84.2, 86.1], 2: [79.8, 84.7, 87.7, 89.7], 3: [82.3, 87.1, 90.1, 92.1] };
+const WBGT_LEVELS = [
+  { name: "Low", c: "#4caf50", fg: "#0f1a10" },
+  { name: "Elevated", c: "#f2e64d", fg: "#16181c" },
+  { name: "Moderate", c: "#f0a830", fg: "#16181c" },
+  { name: "High", c: "#e0402f", fg: "#fff" },
+  { name: "Extreme", c: "#000", fg: "#fff" },
+];
+const WBGT_CLIMATE = { 1: "cooler", 2: "moderate", 3: "hot" };
+// No machine-readable version of the region map exists, so: state default from the published
+// description ("Category 1: most of New England, states bordering Canada, the Rockies; Category 3:
+// south of PA, OH, IA, KS plus most of NM, AZ and California's Central Valley"), then local tweaks.
+const WBGT_STATE = {
+  1: "AK WA OR ID MT WY CO ND MN WI MI NY VT NH ME MA",
+  2: "CA NV UT SD NE KS IA IL IN OH PA NJ CT RI",
+  3: "TX OK NM AZ MO AR LA MS AL TN KY WV VA MD DE DC NC SC GA FL HI PR VI GU AS MP",
+};
+function wbgtRegionAuto(l, elevM) {
+  const st = (l.state || "").toUpperCase();
+  let cat = +(Object.keys(WBGT_STATE).find(k => WBGT_STATE[k].split(" ").includes(st)) || 2);
+  const e = elevM ?? 0;
+  if (st === "TX" && l.lon < -100) cat = 2;                         // West TX / Panhandle (Texas UIL)
+  if (st === "NY" && l.lat < 41.3) cat = 2;                         // NYC and Long Island
+  if (st === "CA" && e < 300 && ((l.lat > 35 && l.lon > -122.2) || l.lon > -117.5)) cat = 3; // Central Valley, low deserts (not the coast)
+  if (["NV", "UT"].includes(st) && e < 1000) cat = 3;               // Las Vegas, St. George
+  if (["CO", "UT"].includes(st) && e < 1600 && cat === 1) cat = 2;  // Grand Junction-type valleys
+  if (["AZ", "NM"].includes(st) && e >= 1500) cat = 2;              // Flagstaff, Santa Fe
+  if (e >= 2000) cat = 1;                                           // high mountain towns
+  return cat;
+}
+const wbgtKey = () => `wx.wbgtCat.${loc.lat.toFixed(2)},${loc.lon.toFixed(2)}`;
+function wbgtRegion() {
+  const o = store.get(wbgtKey(), null);
+  return o ? { cat: o, auto: false } : { cat: wbgtRegionAuto(loc, data.grid?.elevation?.value), auto: true };
+}
+const wbgtLevel = (f, cat) => WBGT_CUTS[cat].filter(c => f >= c).length; // 0 Low … 4 Extreme
+const wbgtSeries = () => series(data.grid?.wetBulbGlobeTemperature);
+function wbgtChip(f, cat) {
+  const L = WBGT_LEVELS[wbgtLevel(f, cat)];
+  return `<span class="wchip" style="background:${L.c};color:${L.fg}">${Math.round(f)}° · ${L.name}</span>`;
+}
+function wbgtScale(f, cat, label) {
+  // five equal-width bands (the High band can be only 2° wide); the marker is placed proportionally within its band
+  const cuts = WBGT_CUTS[cat], edges = [cuts[0] - 6, ...cuts, cuts[3] + 3];
+  const pos = v => {
+    v = Math.min(Math.max(v, edges[0]), edges[5]);
+    const i = Math.min(4, edges.findIndex((e, j) => j > 0 && v < e) - 1 < 0 ? 4 : edges.findIndex((e, j) => j > 0 && v < e) - 1);
+    return (i + (v - edges[i]) / (edges[i + 1] - edges[i])) * 20;
+  };
+  const segs = WBGT_LEVELS.map((L, i) => `<i style="left:${pos(edges[i])}%;width:${pos(edges[i + 1]) - pos(edges[i])}%;background:${L.c}" title="${L.name}"></i>`).join("");
+  const ticks = cuts.map(c => `<span style="left:${pos(c)}%">${c.toFixed(1)}</span>`).join("");
+  const names = WBGT_LEVELS.map((L, i) => `<span style="left:${(pos(edges[i]) + pos(edges[i + 1])) / 2}%">${L.name}</span>`).join("");
+  const r = wbgtRegion();
+  return `<div class="wscale">
+    ${label ? `<div class="wlabel">${label}</div>` : ""}
+    <div class="wnames">${names}</div>
+    <div class="wbar">${segs}${f != null ? `<b style="left:${pos(f)}%" title="${Math.round(f)}°"></b>` : ""}</div>
+    <div class="wticks">${ticks}</div>
+    <div class="wfoot">
+      <label>Scale: <select class="wcat" aria-label="WBGT climate category">${[1, 2, 3].map(c => `<option value="${c}" ${c === cat ? "selected" : ""}>Category ${c} (${WBGT_CLIMATE[c]} climate)</option>`).join("")}</select></label>
+      ${r.auto ? `<span class="k">picked from location</span>` : `<button class="wreset">use location default</button>`}
+      <a href="wbgt.html#c${cat}" target="_blank" rel="noopener">What is WBGT? ↗</a>
+    </div>
+  </div>`;
+}
+// highest WBGT across a calendar day (daylight is when it peaks)
+function wbgtDayMax(dy) {
+  const ser = wbgtSeries(); if (!ser.length) return null;
+  const a = Date.parse((dy.day || dy.night).startTime), b = Date.parse((dy.night || dy.day).endTime);
+  const v = ser.filter(x => x.e > a && x.s < b && x.v != null).map(x => cToF(x.v));
+  return v.length ? Math.max(...v) : null;
 }
 
 /* ---------- state ---------- */
@@ -767,8 +866,12 @@ function render(staleNote) {
   const obsFresh = o && o.temperature?.value != null && now - Date.parse(o.timestamp) < 2 * 3600e3;
   const temp = obsFresh ? cToF(o.temperature.value) : firstHour?.temperature;
   const cond = (obsFresh && o.textDescription) || firstHour?.shortForecast || "";
-  let feels = obsFresh ? cToF(o.heatIndex?.value ?? o.windChill?.value) : null;
-  if (feels == null) feels = cToF(valueAt(gApparent, now));
+  // "feels like" only for cold (wind chill); heat stress is WBGT, not heat index
+  let feels = obsFresh ? cToF(o.windChill?.value) : null;
+  if (feels == null && temp != null && temp <= 50) { const a = cToF(valueAt(gApparent, now)); if (a != null && a < temp) feels = a; }
+  const wbNow = cToF(valueAt(wbgtSeries(), now));
+  const wReg = wbgtRegion();
+  const showWbgt = wbNow != null && (wbNow >= WBGT_CUTS[wReg.cat][0] - 6 || temp >= 80);
   const wind = obsFresh && o.windSpeed?.value != null
     ? `${compass(o.windDirection?.value)} ${rnd(kmhToMph(o.windSpeed.value))} mph${o.windGust?.value ? `, gusts ${rnd(kmhToMph(o.windGust.value))}` : ""}`
     : firstHour ? `${firstHour.windDirection} ${firstHour.windSpeed}` : "–";
@@ -812,7 +915,7 @@ function render(staleNote) {
           <span class="hi">${hi != null ? hi + "°" : ""}</span>
         </span>
         <span class="dshort">${esc(main.shortForecast)}${dy.day && dy.night && dy.night.shortForecast !== dy.day.shortForecast ? `; night: ${esc(dy.night.shortForecast.toLowerCase())}` : ""}</span>
-        ${dayBadges(d.outlooks?.days?.[dy.key])}
+        ${dayBadges(d.outlooks?.days?.[dy.key], wbgtBadge(dy, wReg.cat))}
       </button>
       <div class="detail">${openDays.has(dy.key) ? dayDetail(dy, i) : ""}</div>
     </div>`;
@@ -826,11 +929,13 @@ function render(staleNote) {
       <div class="cond">${esc(cond)}</div>
       <div class="hilo">${hiToday != null ? `H ${hiToday}°` : ""}${hiToday != null && loToday != null ? " · " : ""}${loToday != null ? `L ${loToday}°` : ""}</div>
       <div class="facts">
-        ${feels != null && Math.abs(feels - temp) >= 2 ? `<span>Feels like <b>${rnd(feels)}°</b></span>` : ""}
+        ${feels != null && temp - feels >= 2 ? `<span>Feels like <b>${rnd(feels)}°</b> (wind chill)</span>` : ""}
+        ${showWbgt ? `<span>Heat stress (WBGT) ${wbgtChip(wbNow, wReg.cat)}</span>` : ""}
         <span>Wind <b>${esc(wind)}</b></span>
         ${hum != null ? `<span>Humidity <b>${rnd(hum)}%</b></span>` : ""}
         ${dew != null ? `<span>Dew point <b>${rnd(dew)}°</b></span>` : ""}
       </div>
+      ${showWbgt ? wbgtScale(wbNow, wReg.cat) : ""}
     </section>
     <div class="meta">${staleNote ? esc(staleNote) + " " : "Updated "}${updated}${obsFresh ? ` · observed at ${esc(d.obsStation)}` : ""}<button id="refresh">Refresh</button></div>
     ${alerts}
@@ -857,15 +962,18 @@ function dayDetail(dy, i) {
   if (rain >= 0.01) tot.push(`Precipitation ≈ <b>${rain.toFixed(2)} in</b>`);
   if (snow >= 0.1) tot.push(`Snow ≈ <b>${snow.toFixed(1)} in</b>`);
   const words = [dy.day, dy.night].filter(Boolean).map(p => `<p><b>${esc(p.name)}:</b> ${esc(p.detailedForecast)}</p>`).join("");
+  const reg = wbgtRegion(), wMax = wbgtDayMax(dy);
+  const wb = wMax != null && wMax >= WBGT_CUTS[reg.cat][0] - 6 ? { ser: wbgtSeries(), cat: reg.cat } : null;
   return `
-    ${hours.length ? `<div class="strip">${hourStrip(hours, i === 0)}</div>` : `<div class="nohourly">Hourly detail isn't published this far out.</div>`}
+    ${hours.length ? `<div class="strip">${hourStrip(hours, i === 0, wb)}</div>` : `<div class="nohourly">Hourly detail isn't published this far out.</div>`}
+    ${wb ? wbgtScale(wMax, reg.cat, `Peak heat stress (WBGT) ${wbgtChip(wMax, reg.cat)} <span class="k">· bottom row above is hourly WBGT</span>`) : ""}
     ${tot.length ? `<div class="totals">${tot.join(" · ")}</div>` : ""}
     ${outlookDetail(d.outlooks?.days?.[dy.key])}
     <div class="words">${words}</div>`;
 }
 
-function hourStrip(hours, isToday) {
-  const W = 50, H = 200, n = hours.length;
+function hourStrip(hours, isToday, wb) {
+  const W = 50, H = wb ? 222 : 200, n = hours.length;
   const temps = hours.map(h => h.temperature);
   const tmin = Math.min(...temps), tmax = Math.max(...temps), span = Math.max(tmax - tmin, 6);
   const ty = t => 118 - (t - tmin) / span * 46;
@@ -888,11 +996,23 @@ function hourStrip(hours, isToday) {
     if (p > 0) s += `<rect x="${x(i) - 9}" y="${160 - bh}" width="18" height="${Math.max(bh, 1)}" rx="2" fill="var(--rain)" opacity="${0.35 + p / 160}"/>`;
     s += `<text x="${x(i)}" y="176" text-anchor="middle" font-size="12" class="${p >= 10 ? "r" : "m"}">${p >= 10 ? p + "%" : "·"}</text>`;
     s += `<text x="${x(i)}" y="194" text-anchor="middle" font-size="11" class="m">${esc(windTxt)}</text>`;
+    if (wb) {
+      const v = cToF(valueAt(wb.ser, t + 1800e3));
+      if (v != null) {
+        const L = WBGT_LEVELS[wbgtLevel(v, wb.cat)];
+        s += `<rect x="${x(i) - 17}" y="203" width="34" height="17" rx="4" fill="${L.c}"${L.name === "Extreme" ? ' stroke="#888"' : ""}/>`;
+        s += `<text x="${x(i)}" y="216" text-anchor="middle" font-size="12" font-weight="600" style="fill:${L.fg}">${Math.round(v)}</text>`;
+      }
+    }
   });
   return s + `</svg>`;
 }
 
+$("#main").addEventListener("change", e => {
+  if (e.target.matches(".wcat")) { store.set(wbgtKey(), +e.target.value); render(); }
+});
 $("#main").addEventListener("click", e => {
+  if (e.target.closest(".wreset")) { try { localStorage.removeItem(wbgtKey()); } catch {} render(); return; }
   const sc = e.target.closest("[data-spc]");
   if (sc) { spcOpen = spcOpen === sc.dataset.spc ? null : sc.dataset.spc; render(); return; }
   const row = e.target.closest(".dayrow"); if (!row) return;

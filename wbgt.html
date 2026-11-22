@@ -1,0 +1,135 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Heat Stress (WBGT)</title>
+<meta name="description" content="What wet bulb globe temperature means, why it beats the heat index, and the regional risk scale.">
+<meta name="theme-color" content="#121418">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🌡</text></svg>">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Source+Serif+4:ital,opsz,wght@0,8..60,400;0,8..60,600;1,8..60,400&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #121418; --card: #1b1e24; --card2: #22262e; --line: #2d323c;
+    --text: #ebe7df; --muted: #9a9fa8; --accent: #e6b46e;
+    --serif: "Source Serif 4", Georgia, "Times New Roman", serif;
+    color-scheme: dark;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text); font-family: var(--serif); font-size: 17px; line-height: 1.55; }
+  .wrap { max-width: 720px; margin: 0 auto; padding: 20px 16px 60px; }
+  a { color: var(--accent); }
+  .back { font-size: 15px; }
+  h1 { font-size: 30px; line-height: 1.15; margin: 14px 0 6px; }
+  h2 { font-size: 21px; margin: 34px 0 8px; }
+  .lede { font-size: 19px; color: var(--muted); font-style: italic; margin: 0 0 8px; }
+  .formula { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 12px 14px; font-size: 16px; }
+  .formula b { color: var(--accent); }
+  table { width: 100%; border-collapse: collapse; font-size: 15px; font-variant-numeric: tabular-nums; }
+  th, td { padding: 8px 8px; border-bottom: 1px solid var(--line); text-align: left; vertical-align: top; }
+  th { font-weight: 600; color: var(--muted); font-size: 13px; text-transform: uppercase; letter-spacing: .05em; }
+  td.lvl { font-weight: 600; white-space: nowrap; }
+  td.lvl i { display: inline-block; width: 12px; height: 12px; border-radius: 3px; margin-right: 6px; vertical-align: -1px; outline: 1px solid #555; }
+  .cat { background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 12px 14px; margin: 12px 0; scroll-margin-top: 16px; }
+  .cat:target { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
+  .cat h3 { margin: 0 0 2px; font-size: 18px; }
+  .cat p { margin: 0 0 8px; color: var(--muted); font-size: 15px; }
+  .cat .you { display: none; color: var(--accent); font-size: 13px; font-weight: 600; }
+  .cat:target .you { display: inline; }
+  ul { padding-left: 20px; }
+  li { margin: 4px 0; }
+  .note { color: var(--muted); font-size: 15px; }
+  .sources li { font-size: 15px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <a class="back" href="./">← Back to the forecast</a>
+  <h1>Heat stress: wet bulb globe temperature (WBGT)</h1>
+  <p class="lede">The heat number that accounts for sun, wind and humidity, not just how sticky it feels in the shade.</p>
+
+  <h2>Why not "feels like"?</h2>
+  <p>The heat index (what most apps call "feels like" in summer) combines temperature and humidity <em>for a person in the shade with a light breeze</em>. It leaves out the two things that matter most once you're outside and active:</p>
+  <ul>
+    <li><b>Sun.</b> Direct sunshine can add up to about 15°F to the heat index, according to the National Weather Service. The heat index doesn't include it.</li>
+    <li><b>Wind.</b> A breeze helps sweat evaporate and carries heat away. The heat index assumes it's nearly calm.</li>
+  </ul>
+  <p>So on a sunny, still afternoon the heat index can look fine while conditions are dangerous for anyone working or exercising, and on a breezy, cloudy day it can overstate the risk. That's why this app uses WBGT for heat and keeps "feels like" for cold (wind chill) only.</p>
+
+  <h2>What WBGT measures</h2>
+  <p>WBGT blends three readings, weighted by how much each affects your body's ability to cool off:</p>
+  <div class="formula">
+    WBGT = <b>0.7</b> × wet bulb &nbsp;+&nbsp; <b>0.2</b> × black globe &nbsp;+&nbsp; <b>0.1</b> × air temperature
+  </div>
+  <ul>
+    <li><b>Wet bulb (70%):</b> a thermometer wrapped in a wet wick, which reads lower the more easily sweat can evaporate. This is the humidity and wind part, and it carries most of the weight because evaporating sweat is how you cool off.</li>
+    <li><b>Black globe (20%):</b> a thermometer inside a black ball sitting in the sun. This is the sunshine part.</li>
+    <li><b>Air temperature (10%):</b> the ordinary thermometer reading.</li>
+  </ul>
+  <p><b>WBGT numbers run lower than heat index numbers.</b> A WBGT of 88°F is not a pleasant 88° day. In much of the country it means practices get cut to an hour with no pads. Don't compare the two numbers directly.</p>
+  <p>The WBGT values in this app are the <b>National Weather Service's own hourly WBGT forecast</b>, the same one on <a href="https://digital.weather.gov/" target="_blank" rel="noopener">digital.weather.gov</a>. They assume you're in direct sun unless clouds are forecast.</p>
+
+  <h2>The risk scale depends on where you live</h2>
+  <p>People adapt to the heat they live with. The same WBGT is routine in Louisiana and dangerous in Maine. So the cutoffs for each risk level depend on your climate. The scale below comes from <a href="https://www.sciencedirect.com/science/article/pii/S0143622814002513" target="_blank" rel="noopener">Grundstein et al. (2015)</a>, which split the country into three climate categories based on how hot summers typically get, as published by the <a href="https://ksi.uconn.edu/prevention/wet-bulb-globe-temperature-monitoring/" target="_blank" rel="noopener">Korey Stringer Institute</a>. The level names (Low, Elevated, Moderate, High, Extreme) match the ones the National Weather Service uses.</p>
+
+  <div class="cat" id="c1">
+    <h3>Category 1: cooler climate <span class="you">← your scale</span></h3>
+    <p>Most of New England, the states along the Canadian border, and the Rockies.</p>
+    <table><thead><tr><th>Level</th><th>WBGT (°F)</th></tr></thead><tbody>
+      <tr><td class="lvl"><i style="background:#4caf50"></i>Low</td><td>below 76.2</td></tr>
+      <tr><td class="lvl"><i style="background:#f2e64d"></i>Elevated</td><td>76.2 – 81.1</td></tr>
+      <tr><td class="lvl"><i style="background:#f0a830"></i>Moderate</td><td>81.2 – 84.1</td></tr>
+      <tr><td class="lvl"><i style="background:#e0402f"></i>High</td><td>84.2 – 86.0</td></tr>
+      <tr><td class="lvl"><i style="background:#000"></i>Extreme</td><td>86.1 and up</td></tr>
+    </tbody></table>
+  </div>
+  <div class="cat" id="c2">
+    <h3>Category 2: moderate climate <span class="you">← your scale</span></h3>
+    <p>The middle of the country between the two, such as the central Plains, Ohio Valley and mid-Atlantic north of Virginia, plus West Texas and much of the interior West.</p>
+    <table><thead><tr><th>Level</th><th>WBGT (°F)</th></tr></thead><tbody>
+      <tr><td class="lvl"><i style="background:#4caf50"></i>Low</td><td>below 79.8</td></tr>
+      <tr><td class="lvl"><i style="background:#f2e64d"></i>Elevated</td><td>79.8 – 84.6</td></tr>
+      <tr><td class="lvl"><i style="background:#f0a830"></i>Moderate</td><td>84.7 – 87.6</td></tr>
+      <tr><td class="lvl"><i style="background:#e0402f"></i>High</td><td>87.7 – 89.6</td></tr>
+      <tr><td class="lvl"><i style="background:#000"></i>Extreme</td><td>89.7 and up</td></tr>
+    </tbody></table>
+  </div>
+  <div class="cat" id="c3">
+    <h3>Category 3: hot climate <span class="you">← your scale</span></h3>
+    <p>Generally the states south of Pennsylvania, Ohio, Iowa and Kansas, plus most of New Mexico and Arizona, California's Central Valley and the low deserts.</p>
+    <table><thead><tr><th>Level</th><th>WBGT (°F)</th></tr></thead><tbody>
+      <tr><td class="lvl"><i style="background:#4caf50"></i>Low</td><td>below 82.3</td></tr>
+      <tr><td class="lvl"><i style="background:#f2e64d"></i>Elevated</td><td>82.3 – 87.0</td></tr>
+      <tr><td class="lvl"><i style="background:#f0a830"></i>Moderate</td><td>87.1 – 90.0</td></tr>
+      <tr><td class="lvl"><i style="background:#e0402f"></i>High</td><td>90.1 – 92.0</td></tr>
+      <tr><td class="lvl"><i style="background:#000"></i>Extreme</td><td>92.1 and up</td></tr>
+    </tbody></table>
+  </div>
+  <p class="note"><b>How the app picks your category:</b> the published map isn't available as data, so the app assigns a category by state, then adjusts for a few known exceptions: West Texas, California's Central Valley and low deserts, and high-elevation towns. Near a boundary, it may pick the neighboring category. You can change it with the "Scale" menu under the WBGT bar, and the app remembers your choice for that location.</p>
+
+  <h2>What the levels mean for activity</h2>
+  <p>These follow the general pattern of regional athletic heat guidelines (for example, the Korey Stringer Institute's and Texas UIL's). They're written for people being active outdoors. Follow your school's, team's or employer's own rules where they exist.</p>
+  <ul>
+    <li><b>Low:</b> normal activity. Still take regular water and rest breaks.</li>
+    <li><b>Elevated:</b> be careful with hard or long exertion, and take longer, more frequent breaks.</li>
+    <li><b>Moderate:</b> cut down long, hard sessions (around 2 hours max for practices), take at least 4 breaks an hour, and reduce heavy gear.</li>
+    <li><b>High:</b> keep hard activity short (around 1 hour), drop protective gear and conditioning, and build in lots of rest.</li>
+    <li><b>Extreme:</b> move hard outdoor activity indoors or wait until it cools off.</li>
+  </ul>
+  <p class="note">Watch for heat exhaustion and heat stroke at any level: heavy sweating, dizziness, nausea, confusion, or hot skin with sweating stopped. Heat stroke is a medical emergency, so call 911 and cool the person down right away.</p>
+  <p class="note">Outdoor workers: OSHA and the military use a single, non-regional WBGT scale with work/rest schedules. If that applies to you, use it.</p>
+
+  <h2>Sources</h2>
+  <ul class="sources">
+    <li><a href="https://www.weather.gov/safety/heat-tools" target="_blank" rel="noopener">NWS Heat Tools</a>: how the heat index, WBGT and HeatRisk compare.</li>
+    <li><a href="https://www.weather.gov/media/safety/Heat-Tools-Reference-Sheet4-18-2024.pdf" target="_blank" rel="noopener">NWS Heat Tools reference sheet (PDF)</a>: WBGT categories vary by climate region, and WBGT runs lower than the heat index.</li>
+    <li><a href="https://ksi.uconn.edu/prevention/wet-bulb-globe-temperature-monitoring/" target="_blank" rel="noopener">Korey Stringer Institute: WBGT monitoring</a>, the regional category tables.</li>
+    <li>Grundstein, A., et al. (2015). <a href="https://www.sciencedirect.com/science/article/pii/S0143622814002513" target="_blank" rel="noopener">Regional heat safety thresholds for athletes in the contiguous United States</a>. <i>Applied Geography</i>.</li>
+    <li><a href="https://www.weather.gov/crp/WBGTObs" target="_blank" rel="noopener">NWS Corpus Christi WBGT calculator</a>: Texas UIL regional levels using the same Low–Extreme names.</li>
+  </ul>
+  <p><a class="back" href="./">← Back to the forecast</a></p>
+</div>
+</body>
+</html>
