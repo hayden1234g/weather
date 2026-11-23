@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Widget Worker Test</title>
+<style>
+  :root { --bg: #121418; --text: #ebe7df; --muted: #9a9fa8; --card: #1b1e24; --line: #2d323c; }
+  body { margin: 0; background: var(--bg); color: var(--text); font: 15px/1.4 Georgia, serif; padding: 16px; }
+  input, button { font: inherit; padding: 6px 8px; border-radius: 8px; border: 1px solid var(--line); background: var(--card); color: var(--text); }
+  pre { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 12px; white-space: pre-wrap; }
+  .w { display: inline-flex; gap: 14px; align-items: center; background: #1f2329; border-radius: 22px; padding: 14px 18px; margin: 12px 0; }
+  .w .t { font-size: 40px; } .w .e { font-size: 34px; } .w small { color: var(--muted); display: block; }
+</style>
+</head>
+<body>
+<p>Runs <code>wx-widget.js</code> in the browser (no Cloudflare) so it can be checked before deploying.</p>
+<input id="lat" value="30.27" size="7"> <input id="lon" value="-97.74" size="8"> <button id="go">Run</button>
+<div id="mock"></div>
+<pre id="out">…</pre>
+<script type="module">
+import worker from "./wx-widget.js";
+async function run() {
+  const lat = document.getElementById("lat").value, lon = document.getElementById("lon").value;
+  document.getElementById("out").textContent = "loading…";
+  const t0 = performance.now();
+  const res = await worker.fetch(new Request(`https://x/?lat=${lat}&lon=${lon}`), {}, { waitUntil() {} });
+  const j = await res.json();
+  document.getElementById("out").textContent = `${res.status} in ${Math.round(performance.now() - t0)} ms\n` + JSON.stringify(j, null, 2);
+  document.getElementById("mock").innerHTML = j.error ? "" : `<div class="w">
+    <span class="e">${j.emoji}</span><span class="t">${j.temp}°</span>
+    <span>${j.cond}<small>Dew ${j.dew}° · ${j.wind}${j.gust ? " G" + j.gust : ""}</small>
+      <small style="color:${j.feel.color || "inherit"}">${j.feel.text}</small></span>
+    <span style="color:${j.caution.color};font-size:26px" title="${j.caution.why}">${j.caution.icon}</span></div>`;
+}
+document.getElementById("go").onclick = run;
+const q = new URLSearchParams(location.search);
+if (q.get("lat")) { document.getElementById("lat").value = q.get("lat"); document.getElementById("lon").value = q.get("lon"); }
+run();
+</script>
+</body>
+</html>
